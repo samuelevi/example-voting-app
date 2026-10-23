@@ -9,9 +9,10 @@ RUN apt-get update && \
 # Set the application directory
 WORKDIR /usr/local/app
 
-# Install our requirements.txt
+# Install our requirements.txt, then remove setuptools (not needed at runtime)
 COPY requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip uninstall -y setuptools
 
 # dev defines a stage for development, where it'll watch for filesystem changes
 FROM base AS dev
@@ -22,8 +23,8 @@ CMD ["python", "app.py"]
 # final defines the stage that will bundle the application for production
 FROM base AS final
 
-# Run as an unprivileged user, not root
-RUN useradd --system --uid 10001 --no-create-home appuser
+# Run as an unprivileged user (with a home directory, which gunicorn wants)
+RUN useradd --system --uid 10001 --create-home appuser
 
 COPY . .
 
