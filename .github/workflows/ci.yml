@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays 06:00 UTC: rescan for newly published CVEs
   workflow_dispatch:
 
 permissions:
@@ -13,16 +15,28 @@ permissions:
 jobs:
   checks:
     name: Quick checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Vote - Python syntax check
         run: python3 -m py_compile vote/app.py
 
+  integration-test:
+    name: Integration test
+    runs-on: ubuntu-24.04
+    needs: checks
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run vote -> result end-to-end test
+        run: docker compose -f result/docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from sut
+      - name: Clean up
+        if: always()
+        run: docker compose -f result/docker-compose.test.yml down -v
+
   build-scan-push:
     name: ${{ matrix.service }}
-    needs: checks
-    runs-on: ubuntu-latest
+    needs: [checks, integration-test]
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
@@ -35,7 +49,7 @@ jobs:
             target: final
           - service: result
             context: result
-            target: ""
+            target: final
           - service: worker
             context: worker
             target: ""

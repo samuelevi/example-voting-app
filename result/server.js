@@ -17,8 +17,15 @@ io.on('connection', function (socket) {
   });
 });
 
+if (!process.env.POSTGRES_PASSWORD) {
+  console.error('POSTGRES_PASSWORD is not set');
+  process.exit(1);
+}
+
 var pool = new Pool({
-  connectionString: 'postgres://postgres:postgres@db/postgres'
+  host: process.env.POSTGRES_HOST || 'db',
+  user: process.env.POSTGRES_USER || 'postgres',
+  password: process.env.POSTGRES_PASSWORD
 });
 
 async.retry(

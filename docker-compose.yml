@@ -41,6 +41,9 @@ services:
     networks:
       - front-tier
       - back-tier
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
 
   worker:
     build:
@@ -52,6 +55,9 @@ services:
         condition: service_healthy 
     networks:
       - back-tier
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
 
   redis:
     image: redis:alpine

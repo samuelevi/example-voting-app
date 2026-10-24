@@ -28,6 +28,9 @@ services:
     networks:
       - front-tier
       - back-tier
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres   # local dev only; real value comes from the Kubernetes Secret
 
   worker:
     build: ../worker/
@@ -36,6 +39,9 @@ services:
       - db
     networks:
       - back-tier
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
 
   redis:
     image: redis:alpine
