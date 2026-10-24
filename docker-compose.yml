@@ -25,7 +25,9 @@ services:
       - back-tier
 
   result:
-    build: ./result
+    build: 
+      context: ./result
+      target: dev
     # use nodemon rather than node for local dev
     entrypoint: nodemon --inspect=0.0.0.0 server.js
     depends_on:
