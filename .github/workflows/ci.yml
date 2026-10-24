@@ -88,3 +88,33 @@ jobs:
       - name: Push image
         if: github.event_name == 'push'
         run: docker push ${{ env.IMAGE }}:${{ github.sha }}
+  deploy:
+    name: Deploy to EKS
+    needs: build-scan-push
+    if: github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write    # lets the job ask GitHub for an OIDC token
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - name: Point kubectl at the cluster
+        run: aws eks update-kubeconfig --region eu-west-1 --name voting-app
+
+      - name: Helm upgrade
+        id: deploy
+        run: |
+          helm upgrade --install voting helm/voting-app \
+            --namespace voting \
+            --set image.tag=${{ github.sha }} \
+            --wait --timeout 5m
+
+      - name: Roll back on failure
+        if: failure() && steps.deploy.conclusion == 'failure'
+        run: helm rollback voting --namespace voting --wait || true
