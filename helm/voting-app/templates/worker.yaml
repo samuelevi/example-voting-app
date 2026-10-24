@@ -21,6 +21,9 @@ spec:
         - name: worker
           image: "{{ .Values.image.registry }}/voting-worker:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.db.existingSecret }}
           resources:
             requests:
               cpu: 50m

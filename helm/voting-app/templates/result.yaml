@@ -21,6 +21,9 @@ spec:
         - name: result
           image: "{{ .Values.image.registry }}/voting-result:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.db.existingSecret }}
           ports:
             - containerPort: {{ .Values.result.port }}
           readinessProbe:
