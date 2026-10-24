@@ -1,0 +1,22 @@
+image:
+  registry: ghcr.io/samuelevi
+  tag: "CHANGE_ME"        # set at deploy time to the commit SHA from CI
+  pullPolicy: IfNotPresent
+
+vote:
+  replicas: 2
+  port: 8080
+
+result:
+  replicas: 1
+  port: 8080
+
+worker:
+  replicas: 1
+
+redis:
+  image: redis:alpine     # TODO: pin to an exact version
+
+db:
+  image: postgres:15-alpine
+  existingSecret: db-credentials   # created outside Git, see below
