@@ -1,7 +1,7 @@
-variable "github_repo" {
-  description = "GitHub repository allowed to deploy (owner/name)"
+variable "github_sub" {
+  description = "OIDC subject GitHub sends for runs on main"
   type        = string
-  default     = "samuelevi/example-voting-app"
+  default     = "repo:samuelevi@60100689/example-voting-app@1430414102:ref:refs/heads/main"
 }
 
 # Lets GitHub Actions prove its identity to AWS without stored keys
@@ -26,7 +26,7 @@ data "aws_iam_policy_document" "github_assume" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:ref:refs/heads/main"]
+      values   = [var.github_sub]
     }
   }
 }
