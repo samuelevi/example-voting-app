@@ -155,7 +155,7 @@ Rollback demonstration (a bad tag stands in for a bad release):
 helm upgrade voting helm/voting-app -n voting --set image.tag=does-not-exist --wait --timeout 60s
 kubectl -n voting get pods
 helm history voting -n voting
-helm rollback voting 4 -n voting --wait
+helm rollback voting 5 -n voting --wait
 ```
 
 The upgrade fails after the timeout. The old pods keep serving while the new pods sit in `ErrImagePull` or `ImagePullBackOff`, and `helm history` marks the new revision as failed. Replace `4` with the last revision marked `deployed` in your own `helm history` output. The rollback then creates a new revision that restores that release. In the recorded EKS run, revision 5 failed and the rollback to revision 4 was recorded as revision 6.
