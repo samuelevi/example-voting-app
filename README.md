@@ -7,23 +7,24 @@ A fork of `dockersamples/example-voting-app`, taken from source code to an autom
 - **CI:** GitHub Actions runs checks, an end-to-end test, a build, a Trivy scan and a push, tagged with the commit SHA
 - **Deploy:** one Helm chart, one values file, with a demonstrated rollback
 
-## Status (update before submitting)
+## Status
 
 | Requirement | Status |
 |---|---|
 | App runs locally with Docker Compose | Done |
 | Images hardened (pinned, non-root, `.dockerignore`) | Done |
 | CI: test, Trivy scan, build, push (tag = commit SHA) | Done, all jobs green |
-| Helm chart deployed, bad release shipped, `helm rollback` shown | Done on local Kubernetes (Docker Desktop) |
+| Helm chart deployed, bad release shipped, `helm rollback` shown | Done on EKS (revision 5 failed, rolled back to revision 4, recorded as revision 6) |
 | No secrets in Git | Done (see Security) |
-| Terraform code for EKS | Written and planned (8 resources) |
-| EKS cluster created from Terraform | **Blocked:** AWS Free plan account has a 0 vCPU quota for standard instances. Update this row when resolved. |
-| Deploy to EKS from CI | Written, switched off until a cluster exists |
-| Destroy and rebuild from code on EKS | Pending the row above |
+| Terraform code for EKS | Done (13 resources) |
+| EKS cluster created from Terraform | Done (`eu-west-1`, two nodes) |
+| Deploy to EKS from CI | Done, using GitHub OIDC |
+| Destroy and rebuild from code on EKS | Pending |
 
 ## Architecture
 
 ![Architecture diagram](examplearchitecture.drawio.png)
+
 ```mermaid
 flowchart LR
     Dev[Developer push to main] --> GHA
@@ -106,9 +107,11 @@ On every push to `main` (and weekly on a schedule, to catch newly published CVEs
 3. **Build** each image locally on the runner (target `final` for vote and result).
 4. **Trivy scan:** fails the pipeline on any fixable HIGH or CRITICAL finding, before anything is published.
 5. **Push** to GitHub Container Registry, tagged with the full commit SHA (`ghcr.io/samuelevi/voting-{vote,result,worker}:<sha>`).
-6. **Deploy** (disabled until a cluster exists): `helm upgrade --install` with that SHA, using GitHub's OIDC login to AWS.
+6. **Deploy:** `helm upgrade --install` with that SHA, using GitHub's OIDC login to AWS. This job runs only on pushes, and only when the repository variable `DEPLOY_ENABLED` is `true`.
 
 Pull requests build and scan but never push.
+
+The deploy job reads two repository variables (Settings, Secrets and variables, Actions, Variables tab): `DEPLOY_ENABLED` (set to `true`) and `AWS_DEPLOY_ROLE_ARN` (the output of `terraform output -raw github_deploy_role_arn`). Neither is a secret.
 
 ### Decisions made while fixing scan findings
 
@@ -129,10 +132,14 @@ Region `eu-west-1`, Kubernetes 1.34, two `m7i-flex.large` nodes, default VPC.
 cd terraform
 terraform init
 terraform plan
-terraform apply      # about 10 to 15 minutes; billing starts here
-..\scripts\bootstrap-cluster.ps1
-terraform destroy    # when finished; billing stops
+terraform apply
+cd ..
+.\scripts\bootstrap-cluster.ps1
 ```
+
+`terraform apply` takes about 10 to 15 minutes and billing starts there. The bootstrap script creates the `voting` namespace and the database Secret. After that, a push to `main` deploys the app through CI.
+
+To stop billing, run `terraform destroy` from the `terraform` folder.
 
 **Cost:** the EKS control plane and the nodes bill hourly while the cluster exists. Destroy it when not working.
 
@@ -145,18 +152,20 @@ helm upgrade --install voting helm/voting-app -n voting --set image.tag=<commit-
 Rollback demonstration (a bad tag stands in for a bad release):
 
 ```powershell
-helm upgrade voting helm/voting-app -n voting --set image.tag=does-not-exist --wait --timeout 60s   # fails
-kubectl -n voting get pods        # old pods still serving, new pods ImagePullBackOff
-helm history voting -n voting     # revision marked failed
-helm rollback voting 1 -n voting --wait
+helm upgrade voting helm/voting-app -n voting --set image.tag=does-not-exist --wait --timeout 60s
+kubectl -n voting get pods
+helm history voting -n voting
+helm rollback voting 4 -n voting --wait
 ```
+
+The upgrade fails after the timeout. The old pods keep serving while the new pods sit in `ErrImagePull` or `ImagePullBackOff`, and `helm history` marks the new revision as failed. Replace `4` with the last revision marked `deployed` in your own `helm history` output. The rollback then creates a new revision that restores that release. In the recorded EKS run, revision 5 failed and the rollback to revision 4 was recorded as revision 6.
 
 Old pods keep serving traffic during the bad release because Kubernetes only retires them after the new pods pass their readiness probes.
 
 ## Security
 
 - **No secrets in Git.** `result` and `worker` read `POSTGRES_USER` and `POSTGRES_PASSWORD` from the environment and refuse to start without them. In Kubernetes the values come from a Secret created at deploy time with a generated password (`scripts/bootstrap-cluster.ps1`); the chart references the Secret by name only. The `POSTGRES_PASSWORD: postgres` values in the Compose files are the default for a throwaway local database and are not used in Kubernetes.
-- **No stored cloud credentials.** CI authenticates to AWS with GitHub OIDC and a role limited to this repository's `main` branch. That role can read the cluster description and edit resources in the `voting` namespace only.
+- **No stored cloud credentials.** CI authenticates to AWS with GitHub OIDC and a role limited to this repository's `main` branch. The role's trust policy pins the exact owner and repository IDs that GitHub puts in the token (`repo:samuelevi@60100689/example-voting-app@1430414102:ref:refs/heads/main`), so a renamed or re-created repository cannot assume it. That role can read the cluster description and edit resources in the `voting` namespace only.
 - **Registry credentials.** CI pushes with the per-run `GITHUB_TOKEN`; nothing is stored. The three images are public so the cluster can pull without credentials, and contain no secrets.
 - **Scanning before publishing.** Images that fail the Trivy gate are never pushed.
 
@@ -167,4 +176,3 @@ Old pods keep serving traffic during the bad release because Kubernetes only ret
 - Redis and PostgreSQL use the upstream images (`redis:alpine`, `postgres:15-alpine`); they are not pinned to exact versions yet and are not scanned by this pipeline.
 - The end-to-end test uses an old PhantomJS-based test image. It is test-only and never shipped.
 - Vote and result are reached with `kubectl port-forward`; no load balancer or ingress is created, to avoid extra cost.
- 
